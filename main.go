@@ -28,6 +28,7 @@ func main() {
 	boards := handler.NewBoardHandler(s)
 	columns := handler.NewColumnHandler(s)
 	tasks := handler.NewTaskHandler(s)
+	tags := handler.NewTagHandler(s)
 
 	mux := http.NewServeMux()
 
@@ -49,6 +50,13 @@ func main() {
 	mux.HandleFunc("POST /api/columns/{id}/tasks", tasks.Create)
 	mux.HandleFunc("PUT /api/tasks/{id}", tasks.Update)
 	mux.HandleFunc("DELETE /api/tasks/{id}", tasks.Delete)
+	mux.HandleFunc("PUT /api/tasks/{id}/tags", tags.SetTaskTags)
+
+	// Tag routes
+	mux.HandleFunc("GET /api/tags", tags.List)
+	mux.HandleFunc("POST /api/tags", tags.Create)
+	mux.HandleFunc("PUT /api/tags/{id}", tags.Update)
+	mux.HandleFunc("DELETE /api/tags/{id}", tags.Delete)
 
 	log.Printf("taskboard-api listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, corsMiddleware(mux)))

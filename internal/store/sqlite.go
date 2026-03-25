@@ -66,6 +66,16 @@ func (s *SQLiteStore) migrate() error {
 		title       TEXT NOT NULL,
 		description TEXT NOT NULL DEFAULT '',
 		position    INTEGER NOT NULL DEFAULT 0
+	);
+	CREATE TABLE IF NOT EXISTS tags (
+		id    INTEGER PRIMARY KEY AUTOINCREMENT,
+		name  TEXT NOT NULL,
+		color TEXT NOT NULL DEFAULT '#6366f1'
+	);
+	CREATE TABLE IF NOT EXISTS task_tags (
+		task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+		tag_id  INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+		PRIMARY KEY (task_id, tag_id)
 	);`
 	_, err := s.db.Exec(schema)
 	return err
@@ -171,8 +181,109 @@ func (s *SQLiteStore) GetBoard(id int) (model.Board, error) {
 		if err := taskRows.Err(); err != nil {
 			return b, err
 		}
+		for j := range b.Columns[i].Tasks {
+			tags, err := s.getTaskTags(b.Columns[i].Tasks[j].ID)
+			if err != nil {
+				return b, err
+			}
+			b.Columns[i].Tasks[j].Tags = tags
+		}
 	}
 	return b, nil
+}
+
+func (s *SQLiteStore) getTaskTags(taskID int) ([]model.Tag, error) {
+	rows, err := s.db.Query(`
+		SELECT t.id, t.name, t.color FROM tags t
+		JOIN task_tags tt ON tt.tag_id = t.id
+		WHERE tt.task_id = ? ORDER BY t.name`, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tags []model.Tag
+	for rows.Next() {
+		var tg model.Tag
+		if err := rows.Scan(&tg.ID, &tg.Name, &tg.Color); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tg)
+	}
+	return tags, rows.Err()
+}
+
+// --- Tag operations ---
+
+// ListTags returns all tags.
+func (s *SQLiteStore) ListTags() ([]model.Tag, error) {
+	rows, err := s.db.Query("SELECT id, name, color FROM tags ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tags []model.Tag
+	for rows.Next() {
+		var tg model.Tag
+		if err := rows.Scan(&tg.ID, &tg.Name, &tg.Color); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tg)
+	}
+	return tags, rows.Err()
+}
+
+// CreateTag inserts a new tag.
+func (s *SQLiteStore) CreateTag(name, color string) (model.Tag, error) {
+	res, err := s.db.Exec("INSERT INTO tags (name, color) VALUES (?, ?)", name, color)
+	if err != nil {
+		return model.Tag{}, err
+	}
+	id, _ := res.LastInsertId()
+	return model.Tag{ID: int(id), Name: name, Color: color}, nil
+}
+
+// UpdateTag updates an existing tag.
+func (s *SQLiteStore) UpdateTag(id int, name, color string) (model.Tag, error) {
+	res, err := s.db.Exec("UPDATE tags SET name = ?, color = ? WHERE id = ?", name, color, id)
+	if err != nil {
+		return model.Tag{}, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return model.Tag{}, fmt.Errorf("tag %d not found", id)
+	}
+	return model.Tag{ID: id, Name: name, Color: color}, nil
+}
+
+// DeleteTag removes a tag by ID.
+func (s *SQLiteStore) DeleteTag(id int) error {
+	res, err := s.db.Exec("DELETE FROM tags WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("tag %d not found", id)
+	}
+	return nil
+}
+
+// SetTaskTags replaces all tags on a task.
+func (s *SQLiteStore) SetTaskTags(taskID int, tagIDs []int) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM task_tags WHERE task_id = ?", taskID); err != nil {
+		return err
+	}
+	for _, tagID := range tagIDs {
+		if _, err := tx.Exec("INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?)", taskID, tagID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // --- Column operations ---
