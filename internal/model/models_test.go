@@ -56,7 +56,8 @@ func TestTaskJSONRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(data, &out); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if out != tk {
+	if out.ID != tk.ID || out.ColumnID != tk.ColumnID || out.Title != tk.Title ||
+		out.Description != tk.Description || out.Position != tk.Position {
 		t.Errorf("round-trip mismatch: got %+v", out)
 	}
 }

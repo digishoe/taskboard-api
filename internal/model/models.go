@@ -23,4 +23,12 @@ type Task struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Position    int    `json:"position"`
+	Tags        []Tag  `json:"tags,omitempty"`
+}
+
+// Tag represents a label that can be applied to tasks.
+type Tag struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color"`
 }
